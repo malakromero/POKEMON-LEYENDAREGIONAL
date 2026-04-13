@@ -1,6 +1,6 @@
 #include "global.h"
 #include "region_select.h"
-#include "region_map.h" // Para struct RegionMap y funciones de mapa
+#include "region_map.h" // For struct RegionMap and map functions
 #include "char_customize.h"
 #include "bg.h"
 #include "gpu_regs.h"
@@ -304,7 +304,7 @@ static void DrawRegionPanels(u8 stage)
     const u8 *centerSubtitle;
 
     if (stage == STAGE_REGION)
-            centerSubtitle = sRegionDescs[gSelectedRegion];
+        centerSubtitle = sRegionDescs[gSelectedRegion];
     else
         centerSubtitle = sStartPointNames[gSelectedRegion][gSelectedStartPoint];
 
