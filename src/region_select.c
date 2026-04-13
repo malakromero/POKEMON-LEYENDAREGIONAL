@@ -1,5 +1,6 @@
 #include "global.h"
 #include "region_select.h"
+#include "region_map.h" // Para struct RegionMap y funciones de mapa
 #include "char_customize.h"
 #include "bg.h"
 #include "gpu_regs.h"
@@ -214,7 +215,7 @@ static void DrawRegionPanels(u8 stage)
     const u8 *centerSubtitle;
 
     if (stage == STAGE_REGION)
-        centerSubtitle = sRegionDescs[gSelectedRegion];
+            centerSubtitle = sRegionDescs[gSelectedRegion];
     else
         centerSubtitle = sStartPointNames[gSelectedRegion][gSelectedStartPoint];
 
@@ -234,11 +235,27 @@ static void DrawRegionPanels(u8 stage)
     FillWindowPixelRect(WIN_REGION_CENTER, PIXEL_FILL(3), 93, 0, 3, 96);
     FillWindowPixelRect(WIN_REGION_CENTER, PIXEL_FILL(3), 0, 93, 96, 3);
     FillWindowPixelRect(WIN_REGION_CENTER, PIXEL_FILL(2), 6, 22, 84, 1);
-    {
-        u8 xOff = GetStringCenterAlignXOffset(FONT_NORMAL, sRegionNames[gSelectedRegion], 96);
-        AddTextPrinterParameterized(WIN_REGION_CENTER, FONT_NORMAL, sRegionNames[gSelectedRegion], xOff, 6, TEXT_SKIP_DRAW, NULL);
-    }
-    AddTextPrinterParameterized(WIN_REGION_CENTER, FONT_NORMAL, centerSubtitle, 8, 30, TEXT_SKIP_DRAW, NULL);
+
+        // Mostrar minimapa de Hoenn estático en la pantalla de selección de región
+        if (stage == STAGE_REGION) {
+            // Inicializa el mapa de Hoenn en modo visualización (sin cursor ni interacción)
+            struct RegionMap regionMap;
+            regionMap.mapSecId = 0; // Cualquier valor válido
+            regionMap.bgManaged = FALSE;
+            regionMap.bgNum = 2;
+            regionMap.charBaseIdx = 2;
+            regionMap.mapBaseIdx = 28;
+            regionMap.zoomed = FALSE;
+            InitRegionMap(&regionMap, FALSE);
+            while (LoadRegionMapGfx());
+            // El mapa se dibuja en BG2, asegúrate que esté habilitado y con prioridad adecuada
+            SetGpuReg(REG_OFFSET_DISPCNT, GetGpuReg(REG_OFFSET_DISPCNT) | (1 << 10)); // BG2 ON
+            SetBgAttribute(2, BG_ATTR_PRIORITY, 2);
+        } else {
+            u8 xOff = GetStringCenterAlignXOffset(FONT_NORMAL, sRegionNames[gSelectedRegion], 96);
+            AddTextPrinterParameterized(WIN_REGION_CENTER, FONT_NORMAL, sRegionNames[gSelectedRegion], xOff, 6, TEXT_SKIP_DRAW, NULL);
+            AddTextPrinterParameterized(WIN_REGION_CENTER, FONT_NORMAL, centerSubtitle, 8, 30, TEXT_SKIP_DRAW, NULL);
+        }
     AddTextPrinterParameterized(WIN_REGION_CENTER, FONT_NORMAL, sText_Arrows, 36, 74, TEXT_SKIP_DRAW, NULL);
     PutWindowTilemap(WIN_REGION_CENTER);
     CopyWindowToVram(WIN_REGION_CENTER, COPYWIN_FULL);
