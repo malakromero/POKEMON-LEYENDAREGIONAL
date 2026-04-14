@@ -598,3 +598,16 @@ leafgreen: all
 # Symbol file (`make syms`)
 $(SYM): $(ELF)
 	$(OBJDUMP) -t $< | sort -u | grep -E "^0[2389]" | $(PERL) -p -e 's/^(\w{8}) (\w).{6} \S+\t(\w{8}) (\S+)$$/\1 \2 \3 \4/g' > $@
+
+# --- Minimap de Kanto automático ---
+KANTO_MINIMAP_PNG := graphics/pokenav/region_map/map_kanto.png
+KANTO_MINIMAP_GFX := graphics/kanto_minimap/kanto_minimap_gfx.h
+KANTO_MINIMAP_TMP := graphics/kanto_minimap/kanto_minimap_gfx.c
+
+$(KANTO_MINIMAP_GFX): $(KANTO_MINIMAP_PNG)
+	@echo "[GRIT] Generando minimapa de Kanto..."
+	grit $(KANTO_MINIMAP_PNG) -ftc -gB8 -gTFF00FF -p -pS -o graphics/kanto_minimap/kanto_minimap_gfx
+	cat $(KANTO_MINIMAP_TMP) >> $(KANTO_MINIMAP_GFX)
+
+# Compilar el minimapa antes del rom
+rom: $(KANTO_MINIMAP_GFX)

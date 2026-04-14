@@ -1,3 +1,7 @@
+#include "global.h"
+
+// Paleta del minimapa de Kanto (para menú de selección)
+extern const u16 ALIGNED(4) sRegionMapKanto_Pal[];
 #ifndef GUARD_REGION_MAP_H
 #define GUARD_REGION_MAP_H
 

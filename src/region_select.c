@@ -1,5 +1,6 @@
 #include "global.h"
 #include "region_select.h"
+#include "region_map.h" // For struct RegionMap and map functions
 #include "char_customize.h"
 #include "bg.h"
 #include "gpu_regs.h"
@@ -18,6 +19,7 @@
 #include "constants/rgb.h"
 #include "constants/songs.h"
 #include "constants/map_groups.h"
+#include "constants/region_map_sections.h"
 
 #define WIN_REGION_TITLE    0
 #define WIN_REGION_LEFT     1
@@ -29,6 +31,10 @@
 #define STAGE_STARTPOINT    1
 
 #define tStage data[0]
+
+#define REGION_MAP_CURSOR_X_MIN 1
+#define REGION_MAP_CURSOR_Y_MIN 2
+#define TAG_REGION_SELECT_CURSOR 3000
 
 #define HOENN_BG_COLOR  RGB(14, 22, 31)
 #define KANTO_BG_COLOR  RGB(10, 20, 10)
@@ -55,7 +61,7 @@ static const u8 sText_KantoDesc[] = _("{COLOR WHITE}{SHADOW DARK_GRAY}Region del
 static const u8 sText_JohtoDesc[] = _("{COLOR WHITE}{SHADOW DARK_GRAY}Region del Prof. Elm");
 
 static const u8 sText_HintRegion[] = _("{COLOR LIGHT_GRAY}{SHADOW DARK_GRAY}IZQ/DER o B: Region  A: Confirmar");
-static const u8 sText_HintStart[] = _("{COLOR LIGHT_GRAY}{SHADOW DARK_GRAY}IZQ/DER o B: Punto  A: Confirmar  SELECT: Atras");
+static const u8 sText_HintStart[] = _("{COLOR LIGHT_GRAY}{SHADOW DARK_GRAY}DPAD: Cursor  A: Confirmar  B/SELECT: Atras");
 
 static const u8 sText_Start_Hoenn0[] = _("{COLOR WHITE}{SHADOW DARK_GRAY}Littleroot");
 static const u8 sText_Start_Hoenn1[] = _("{COLOR WHITE}{SHADOW DARK_GRAY}Oldale");
@@ -139,6 +145,15 @@ static const struct WindowTemplate sRegionSelectWinTemplates[] =
 static const struct BgTemplate sRegionSelectBgTemplates[] =
 {
     {
+        .bg            = 2,
+        .charBaseIndex = 2,
+        .mapBaseIndex  = 28,
+        .screenSize    = 2,
+        .paletteMode   = 1,
+        .priority      = 2,
+        .baseTile      = 0,
+    },
+    {
         .bg            = 0,
         .charBaseIndex = 0,
         .mapBaseIndex  = 31,
@@ -148,6 +163,9 @@ static const struct BgTemplate sRegionSelectBgTemplates[] =
         .baseTile      = 0,
     },
 };
+
+static EWRAM_DATA struct RegionMap sRegionSelectMap;
+static EWRAM_DATA bool8 sRegionMapReady = FALSE;
 
 static void MainCB2_RegionSelect(void)
 {
@@ -185,13 +203,85 @@ static u8 StartNext(u8 s)
     return (s >= START_POINT_COUNT - 1) ? 0 : s + 1;
 }
 
+static mapsec_u16_t StartPointToMapSec(u8 region, u8 startPoint)
+{
+    if (region != REGION_HOENN)
+        return MAPSEC_NONE;
+
+    switch (startPoint)
+    {
+    case 1:
+        return MAPSEC_OLDALE_TOWN;
+    case 2:
+        return MAPSEC_PETALBURG_CITY;
+    case 0:
+    default:
+        return MAPSEC_LITTLEROOT_TOWN;
+    }
+}
+
+static bool8 TrySetStartPointFromMapSec(mapsec_u16_t mapSecId)
+{
+    if (gSelectedRegion != REGION_HOENN)
+        return FALSE;
+
+    switch (mapSecId)
+    {
+    case MAPSEC_LITTLEROOT_TOWN:
+        gSelectedStartPoint = 0;
+        return TRUE;
+    case MAPSEC_OLDALE_TOWN:
+        gSelectedStartPoint = 1;
+        return TRUE;
+    case MAPSEC_PETALBURG_CITY:
+        gSelectedStartPoint = 2;
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
+static void SetRegionCursorVisible(bool8 visible)
+{
+    if (sRegionMapReady && sRegionSelectMap.cursorSprite != NULL)
+        sRegionSelectMap.cursorSprite->invisible = !visible;
+}
+
+static void MoveCursorToSelectedStartPoint(void)
+{
+    mapsec_u16_t mapSecId;
+    const struct RegionMapLocation *loc;
+
+    if (!sRegionMapReady)
+        return;
+
+    mapSecId = StartPointToMapSec(gSelectedRegion, gSelectedStartPoint);
+    if (mapSecId == MAPSEC_NONE)
+        return;
+
+    loc = &gRegionMapEntries[mapSecId];
+    sRegionSelectMap.mapSecId = mapSecId;
+    sRegionSelectMap.cursorPosX = loc->x + (loc->width / 2) + REGION_MAP_CURSOR_X_MIN;
+    sRegionSelectMap.cursorPosY = loc->y + (loc->height / 2) + REGION_MAP_CURSOR_Y_MIN;
+
+    if (sRegionSelectMap.cursorSprite != NULL)
+    {
+        sRegionSelectMap.cursorSprite->x = 8 * sRegionSelectMap.cursorPosX + 4;
+        sRegionSelectMap.cursorSprite->y = 8 * sRegionSelectMap.cursorPosY + 4;
+    }
+}
+
 static void DrawRegionTitle(u8 stage)
 {
     const u8 *text = (stage == STAGE_REGION) ? sText_RegionQuestion : sText_StartPointQuestion;
+    const u8 *selectionText = (stage == STAGE_REGION)
+        ? sRegionNames[gSelectedRegion]
+        : sStartPointNames[gSelectedRegion][gSelectedStartPoint];
 
     FillWindowPixelBuffer(WIN_REGION_TITLE, PIXEL_FILL(1));
     FillWindowPixelRect(WIN_REGION_TITLE, PIXEL_FILL(3), 0, 0, 224, 2);
     AddTextPrinterParameterized(WIN_REGION_TITLE, FONT_NORMAL, text, 4, 8, TEXT_SKIP_DRAW, NULL);
+    AddTextPrinterParameterized(WIN_REGION_TITLE, FONT_SMALL, selectionText, 132, 9, TEXT_SKIP_DRAW, NULL);
     PutWindowTilemap(WIN_REGION_TITLE);
     CopyWindowToVram(WIN_REGION_TITLE, COPYWIN_FULL);
 }
@@ -218,6 +308,17 @@ static void DrawRegionPanels(u8 stage)
     else
         centerSubtitle = sStartPointNames[gSelectedRegion][gSelectedStartPoint];
 
+    if (gSelectedRegion == REGION_HOENN)
+    {
+        ClearWindowTilemap(WIN_REGION_LEFT);
+        ClearWindowTilemap(WIN_REGION_CENTER);
+        ClearWindowTilemap(WIN_REGION_RIGHT);
+        CopyWindowToVram(WIN_REGION_LEFT, COPYWIN_MAP);
+        CopyWindowToVram(WIN_REGION_CENTER, COPYWIN_MAP);
+        CopyWindowToVram(WIN_REGION_RIGHT, COPYWIN_MAP);
+        return;
+    }
+
     FillWindowPixelBuffer(WIN_REGION_LEFT, PIXEL_FILL(1));
     FillWindowPixelRect(WIN_REGION_LEFT, PIXEL_FILL(2), 0, 0, 56, 2);
     FillWindowPixelRect(WIN_REGION_LEFT, PIXEL_FILL(2), 0, 0, 2, 80);
@@ -234,11 +335,12 @@ static void DrawRegionPanels(u8 stage)
     FillWindowPixelRect(WIN_REGION_CENTER, PIXEL_FILL(3), 93, 0, 3, 96);
     FillWindowPixelRect(WIN_REGION_CENTER, PIXEL_FILL(3), 0, 93, 96, 3);
     FillWindowPixelRect(WIN_REGION_CENTER, PIXEL_FILL(2), 6, 22, 84, 1);
+
     {
         u8 xOff = GetStringCenterAlignXOffset(FONT_NORMAL, sRegionNames[gSelectedRegion], 96);
         AddTextPrinterParameterized(WIN_REGION_CENTER, FONT_NORMAL, sRegionNames[gSelectedRegion], xOff, 6, TEXT_SKIP_DRAW, NULL);
+        AddTextPrinterParameterized(WIN_REGION_CENTER, FONT_NORMAL, centerSubtitle, 8, 30, TEXT_SKIP_DRAW, NULL);
     }
-    AddTextPrinterParameterized(WIN_REGION_CENTER, FONT_NORMAL, centerSubtitle, 8, 30, TEXT_SKIP_DRAW, NULL);
     AddTextPrinterParameterized(WIN_REGION_CENTER, FONT_NORMAL, sText_Arrows, 36, 74, TEXT_SKIP_DRAW, NULL);
     PutWindowTilemap(WIN_REGION_CENTER);
     CopyWindowToVram(WIN_REGION_CENTER, COPYWIN_FULL);
@@ -265,6 +367,11 @@ static void Task_RegionSelect_FadeOut(u8 taskId)
 {
     if (!gPaletteFade.active)
     {
+        if (sRegionMapReady)
+        {
+            FreeRegionMapIconResources();
+            sRegionMapReady = FALSE;
+        }
         FreeAllWindowBuffers();
         DestroyTask(taskId);
         SetMainCallback2(CB2_InitCharCustomize);
@@ -305,41 +412,78 @@ static void Task_RegionSelect_Input(u8 taskId)
         {
             PlaySE(SE_SELECT);
             gTasks[taskId].tStage = STAGE_STARTPOINT;
+            if (gSelectedRegion == REGION_HOENN)
+            {
+                MoveCursorToSelectedStartPoint();
+                SetRegionCursorVisible(TRUE);
+            }
             RedrawAll(STAGE_STARTPOINT);
             return;
         }
     }
     else
     {
-        if (JOY_NEW(DPAD_RIGHT) || JOY_REPEAT(DPAD_RIGHT)
-         || JOY_NEW(DPAD_DOWN) || JOY_REPEAT(DPAD_DOWN)
-         || JOY_NEW(R_BUTTON))
+        if (gSelectedRegion == REGION_HOENN)
         {
-            PlaySE(SE_SELECT);
-            gSelectedStartPoint = StartNext(gSelectedStartPoint);
+            switch (DoRegionMapInputCallback())
+            {
+            case MAP_INPUT_MOVE_END:
+                TrySetStartPointFromMapSec(sRegionSelectMap.mapSecId);
+                DrawRegionTitle(STAGE_STARTPOINT);
+                break;
+            case MAP_INPUT_A_BUTTON:
+                if (TrySetStartPointFromMapSec(sRegionSelectMap.mapSecId))
+                {
+                    PlaySE(SE_SELECT);
+                    BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_BLACK);
+                    gTasks[taskId].func = Task_RegionSelect_FadeOut;
+                }
+                else
+                {
+                    PlaySE(SE_FAILURE);
+                }
+                return;
+            case MAP_INPUT_B_BUTTON:
+                PlaySE(SE_SELECT);
+                gTasks[taskId].tStage = STAGE_REGION;
+                SetRegionCursorVisible(FALSE);
+                RedrawAll(STAGE_REGION);
+                return;
+            }
         }
-        else if (JOY_NEW(DPAD_LEFT) || JOY_REPEAT(DPAD_LEFT)
-              || JOY_NEW(DPAD_UP) || JOY_REPEAT(DPAD_UP)
-              || JOY_NEW(L_BUTTON))
+        else
         {
-            PlaySE(SE_SELECT);
-            gSelectedStartPoint = StartPrev(gSelectedStartPoint);
-        }
-        else if (JOY_NEW(B_BUTTON))
-        {
-            PlaySE(SE_SELECT);
-            gSelectedStartPoint = StartPrev(gSelectedStartPoint);
+            if (JOY_NEW(DPAD_RIGHT) || JOY_REPEAT(DPAD_RIGHT)
+             || JOY_NEW(DPAD_DOWN) || JOY_REPEAT(DPAD_DOWN)
+             || JOY_NEW(R_BUTTON))
+            {
+                PlaySE(SE_SELECT);
+                gSelectedStartPoint = StartNext(gSelectedStartPoint);
+            }
+            else if (JOY_NEW(DPAD_LEFT) || JOY_REPEAT(DPAD_LEFT)
+                  || JOY_NEW(DPAD_UP) || JOY_REPEAT(DPAD_UP)
+                  || JOY_NEW(L_BUTTON))
+            {
+                PlaySE(SE_SELECT);
+                gSelectedStartPoint = StartPrev(gSelectedStartPoint);
+            }
+            else if (JOY_NEW(B_BUTTON))
+            {
+                PlaySE(SE_SELECT);
+                gSelectedStartPoint = StartPrev(gSelectedStartPoint);
+            }
         }
 
         if (JOY_NEW(SELECT_BUTTON))
         {
             PlaySE(SE_SELECT);
             gTasks[taskId].tStage = STAGE_REGION;
+            SetRegionCursorVisible(FALSE);
             RedrawAll(STAGE_REGION);
             return;
         }
 
-        if (JOY_NEW(A_BUTTON))
+        if (gSelectedRegion != REGION_HOENN && JOY_NEW(A_BUTTON))
         {
             PlaySE(SE_SELECT);
             BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_BLACK);
@@ -460,10 +604,17 @@ void CB2_InitRegionSelect(void)
         break;
     case 4:
         ShowBg(0);
-        SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP | DISPCNT_BG0_ON);
+        ShowBg(2);
+        SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_OBJ_1D_MAP | DISPCNT_BG0_ON | DISPCNT_BG2_ON);
         gMain.state++;
         break;
     case 5:
+        InitRegionMapData(&sRegionSelectMap, &sRegionSelectBgTemplates[0], FALSE);
+        while (LoadRegionMapGfx())
+            ;
+        CreateRegionMapCursor(TAG_REGION_SELECT_CURSOR, TAG_REGION_SELECT_CURSOR);
+        sRegionMapReady = TRUE;
+        SetRegionCursorVisible(FALSE);
         RedrawAll(STAGE_REGION);
         gMain.state++;
         break;
