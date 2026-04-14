@@ -14,31 +14,6 @@
 //
 //======================================================================
 
-#ifndef GRIT_KANTO_MINIMAP_GFX_H
-#define GRIT_KANTO_MINIMAP_GFX_H
-
-#define kanto_minimap_gfxTilesLen 12288
-extern const unsigned int kanto_minimap_gfxTiles[3072];
-
-#endif // GRIT_KANTO_MINIMAP_GFX_H
-
-//}}BLOCK(kanto_minimap_gfx)
-
-//{{BLOCK(kanto_minimap_gfx)
-
-//======================================================================
-//
-//	kanto_minimap_gfx, 128x96@8, 
-//	Transparent color : FF,00,FF
-//	+ 192 tiles not compressed
-//	Total size: 12288 = 12288
-//
-//	Time-stamp: 2026-04-14, 12:19:04
-//	Exported by Cearn's GBA Image Transmogrifier, v1.19.1-blocks
-//	( http://www.coranac.com/projects/#grit )
-//
-//======================================================================
-
 const unsigned int kanto_minimap_gfxTiles[3072] __attribute__((aligned(4))) __attribute__((visibility("hidden")))=
 {
 	0x1A1A1A1A,0x1A1A1A1A,0x1A1A1A1A,0x1A1A1A1A,0x1A1A1A1A,0x1A1A1A1A,0x1A1A1A1A,0x1A1A1A1A,
