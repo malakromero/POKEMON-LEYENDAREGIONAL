@@ -1,6 +1,8 @@
 #include "global.h"
 #include "char_customize.h"
+//#include "fondo_azul_pokeball.c"
 #include "main_menu.h"
+#include "fondo_azul_pokeball.h"
 #include "region_select.h"
 #include "trainer_pokemon_sprites.h"
 #include "bg.h"
@@ -119,7 +121,7 @@ static const struct WindowTemplate sCharCustomizeWinTemplates[] =
         .width = 28,
         .height = 2,
         .paletteNum = 15,
-        .baseBlock = 1,
+        .baseBlock = 0x258, // Movido después de los 600 tiles de tu fondo
     },
     [WIN_MENU] = {
         .bg = 0,
@@ -149,7 +151,7 @@ static const struct BgTemplate sBgTemplates[] =
         .charBaseIndex = 0,
         .mapBaseIndex = 31,
         .screenSize = 0,
-        .paletteMode = 0,
+        .paletteMode = 1,
         .priority = 3,
         .baseTile = 0,
     },
@@ -531,10 +533,21 @@ void CB2_InitCharCustomize(void)
         break;
     case 3:
     {
-        u8 taskId;
-        u8 i;
+        // 1. Cargar Paleta completa (256 colores)
+        LoadPalette(fondo_azul_pokeballPal, BG_PLTT_ID(0), 512);
 
-        LoadPalette(sBgPal, BG_PLTT_ID(0), sizeof(sBgPal));
+        // 2. Cargar los tiles (38400 bytes es el tamaño de tus 9600 ints)
+        LoadBgTiles(0, fondo_azul_pokeballTiles, 38400, 0);
+
+        // 3. Limpiar el mapa del BG0 por seguridad
+        FillBgTilemapBufferRect_Palette0(0, 0, 0, 0, 32, 32);
+
+        // 4. Cargar tu Mapa (los 600 números)
+        CopyToBgTilemapBuffer(0, fondo_azul_pokeballMap, 0, 0);
+
+        // 5. Enviar a VRAM
+        CopyBgTilemapBufferToVram(0);
+
         {
             static const u16 sTxtPal[] = {
                 RGB( 0,  0,  0),
@@ -545,6 +558,7 @@ void CB2_InitCharCustomize(void)
             };
             LoadPalette(sTxtPal, BG_PLTT_ID(15), sizeof(sTxtPal));
         }
+        // ... resto del código ...
 
         taskId = CreateTask(Task_CharCustomize_FadeIn, 0);
         sCharCustomizeTaskId = taskId;
